@@ -23,11 +23,7 @@ amazon-sentiment-chatbot/
    ```
 
 2. **Run the notebooks in order:**
-   - `01_data_exploration.ipynb` - Explore the dataset
-   - `02_preprocessing.ipynb` - Clean and preprocess data
-   - `03_sentiment_analysis.ipynb` - Build the sentiment model
-   - `04_model_evaluation.ipynb` - Evaluate model performance
-   - `05_chatbot.ipynb` - Build the chatbot interface
+   - `Main.ipynb` - Explore the dataset
 
 ## Data
 
