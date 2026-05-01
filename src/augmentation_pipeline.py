@@ -13,6 +13,10 @@ Usage:
         label_col="label",
         output_path="data/processed/augmented.csv",
     )
+
+Note: BERT augmentation is implemented directly with transformers fill-mask
+pipeline instead of nlpaug, which is incompatible with transformers >= 4.31
+(nlpaug calls the removed private method _convert_token_to_id).
 """
 
 import logging
@@ -64,34 +68,74 @@ def back_translate(
 
 # ── BERT contextual augmentation ──────────────────────────────────────────────
 
-def _build_bert_augmenter(aug_p: float = 0.175):
+class _BertContextualAugmenter:
     """
-    Build a ContextualWordEmbsAug instance with bert-base-uncased.
+    BERT fill-mask contextual word substitution built on transformers directly.
 
-    aug_p is kept in the 0.15–0.20 range so only 15–20% of tokens are replaced.
+    nlpaug.ContextualWordEmbsAug is intentionally avoided: it calls the private
+    method BertTokenizer._convert_token_to_id which was removed in
+    transformers 4.31+ and is not fixed upstream.
+
+    Algorithm:
+        1. Randomly select aug_p fraction of word positions.
+        2. For each position, replace the word with [MASK] and run fill-mask.
+        3. Substitute with the top-1 BERT prediction.
     """
-    import torch
-    import nlpaug.augmenter.word as naw
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info("Loading BERT augmenter on %s …", device)
-    return naw.ContextualWordEmbsAug(
-        model_path="bert-base-uncased",
-        action="substitute",
-        aug_p=aug_p,
-        device=device,
-    )
+    def __init__(
+        self,
+        model_name: str = "bert-base-uncased",
+        aug_p: float = 0.175,
+    ) -> None:
+        import torch
+        from transformers import pipeline, logging as hf_logging
+
+        # suppress the harmless "UNEXPECTED key" load report (NSP head not used by fill-mask)
+        hf_logging.set_verbosity_error()
+
+        device = 0 if torch.cuda.is_available() else -1
+        logger.info("Loading BERT fill-mask pipeline on %s …",
+                    "cuda" if device == 0 else "cpu")
+        self._pipe = pipeline("fill-mask", model=model_name, device=device)
+        self._mask = self._pipe.tokenizer.mask_token  # "[MASK]"
+        self.aug_p = aug_p
+
+    def augment(self, text: str) -> str:
+        words = text.split()
+        if not words:
+            return text
+
+        n_replace = max(1, round(len(words) * self.aug_p))
+        positions = random.sample(range(len(words)), min(n_replace, len(words)))
+
+        result = words[:]
+        for pos in positions:
+            masked = result[:]
+            masked[pos] = self._mask
+            try:
+                preds = self._pipe(" ".join(masked))
+                top_token = preds[0]["token_str"].strip()
+                if top_token:
+                    result[pos] = top_token
+            except Exception:
+                pass  # keep original word if prediction fails
+
+        return " ".join(result)
 
 
-def bert_augment(text: str, augmenter) -> str:
+def _build_bert_augmenter(aug_p: float = 0.175) -> _BertContextualAugmenter:
+    """Return a _BertContextualAugmenter with aug_p in the 0.15–0.20 range."""
+    return _BertContextualAugmenter(aug_p=aug_p)
+
+
+def bert_augment(text: str, augmenter: _BertContextualAugmenter) -> str:
     """
     Apply BERT contextual word substitution to *text*.
 
     Returns the original text if augmentation raises an exception.
     """
     try:
-        result = augmenter.augment(text)
-        return result[0] if isinstance(result, list) else result
+        return augmenter.augment(text)
     except Exception as exc:
         logger.warning("bert_augment failed (%s) — returning input.", exc)
         return text
