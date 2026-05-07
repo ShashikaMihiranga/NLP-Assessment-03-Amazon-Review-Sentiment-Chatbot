@@ -86,17 +86,33 @@ class _BertContextualAugmenter:
         self,
         model_name: str = "bert-base-uncased",
         aug_p: float = 0.175,
+        batch_size: int = 256,
     ) -> None:
         import torch
         from transformers import pipeline, logging as hf_logging
 
-        # suppress the harmless "UNEXPECTED key" load report (NSP head not used by fill-mask)
         hf_logging.set_verbosity_error()
 
-        device = 0 if torch.cuda.is_available() else -1
-        logger.info("Loading BERT fill-mask pipeline on %s …",
-                    "cuda" if device == 0 else "cpu")
-        self._pipe = pipeline("fill-mask", model=model_name, device=device)
+        # MPS first (Apple Silicon), then CUDA, then CPU
+        if torch.backends.mps.is_available():
+            device = "mps"
+            dtype  = torch.float16
+        elif torch.cuda.is_available():
+            device = 0
+            dtype  = torch.float16
+        else:
+            device = -1
+            dtype  = torch.float32
+
+        logger.info("Loading BERT fill-mask pipeline on %s (dtype=%s, batch=%d) …",
+                    device, dtype, batch_size)
+        self._pipe = pipeline(
+            "fill-mask",
+            model=model_name,
+            device=device,
+            batch_size=batch_size,
+            torch_dtype=dtype,
+        )
         self._mask = self._pipe.tokenizer.mask_token  # "[MASK]"
         self.aug_p = aug_p
 
@@ -123,9 +139,12 @@ class _BertContextualAugmenter:
         return " ".join(result)
 
 
-def _build_bert_augmenter(aug_p: float = 0.175) -> _BertContextualAugmenter:
+def _build_bert_augmenter(
+    aug_p: float = 0.175,
+    batch_size: int = 256,
+) -> _BertContextualAugmenter:
     """Return a _BertContextualAugmenter with aug_p in the 0.15–0.20 range."""
-    return _BertContextualAugmenter(aug_p=aug_p)
+    return _BertContextualAugmenter(aug_p=aug_p, batch_size=batch_size)
 
 
 def bert_augment(text: str, augmenter: _BertContextualAugmenter) -> str:
@@ -216,6 +235,7 @@ def augment_dataframe(
     delay_range: tuple[float, float] = (0.5, 1.5),
     output_path: Optional[str] = None,
     random_state: int = 42,
+    batch_size: int = 256,
 ) -> pd.DataFrame:
     """
     Augment minority-class samples and return the combined dataframe.
@@ -268,7 +288,7 @@ def augment_dataframe(
     )
 
     # ── Lazy-load heavy models once ───────────────────────────────────────────
-    augmenter = _build_bert_augmenter(aug_p)
+    augmenter = _build_bert_augmenter(aug_p, batch_size)
     sim_model = _build_sim_model()
 
     df_out = df.copy()
