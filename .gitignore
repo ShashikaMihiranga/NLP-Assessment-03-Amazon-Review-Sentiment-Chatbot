@@ -5,8 +5,19 @@ data/**/*.jsonl.gz
 *.csv
 !data/sample/sample_reviews.csv
 
-# Models
+# Models — exclude large binary weights, keep config/tokenizer
+models/**/*.safetensors
+models/**/*.bin
+models/**/*.pt
+models/**/*.pth
 models/*.pkl
+
+# Data — processed files are too large for git
+data/processed/
+*.parquet
+
+# Claude internal
+.claude/
 
 # Python
 __pycache__/
