@@ -19,6 +19,9 @@ data/processed/
 # Claude internal
 .claude/
 
+# Word temp files
+~$*
+
 # Python
 __pycache__/
 *.py[cod]
