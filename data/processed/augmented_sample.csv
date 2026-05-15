@@ -1,0 +1,13 @@
+text,label,is_augmented
+"This product works great, very happy with the purchase.",positive,False
+"Excellent quality, fast delivery, would buy again.",positive,False
+"Good value for money, solid build quality.",positive,False
+"Terrible product, broke after one day.",negative,False
+"Completely disappointed, waste of money.",negative,False
+"Average product, nothing special to say.",neutral,False
+"Terrible product, broken after a .",negative,True
+"Terrible product, broken after a day.",negative,True
+"Completely disappointed, waste of .",negative,True
+"Completely disappointed, waste of .",negative,True
+"Average product, nothing special to .",neutral,True
+"Average product, nothing much to say.",neutral,True
